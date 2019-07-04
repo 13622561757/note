@@ -1,0 +1,114 @@
+#-x:备用设备的个数，备用设备一般写到最后边，前边的-n 代表的是成员，故没有加上备用设备的数量
+[root@localhost6 raid0]#mdadm -C /dev/md5 -a yes -l 5 -n 3 -x 1 /dev/sdb3 /dev/sdc1 /dev/sdd1 /dev/sdb4
+mdadm: Defaulting to version 1.2 metadata
+mdadm: array /dev/md5 started.
+ 
+
+[root@localhost6 raid0]#mdadm -D /dev/md5   #查看raid的详细信息
+/dev/md5:
+        Version : 1.2
+  Creation Time : Sun Apr 23 19:34:50 2017
+     Raid Level : raid5
+     Array Size : 41928704 (39.99 GiB 42.93 GB)
+  Used Dev Size : 20964352 (19.99 GiB 21.47 GB)
+   Raid Devices : 3
+  Total Devices : 4
+    Persistence : Superblock is persistent
+
+    Update Time : Sun Apr 23 19:35:44 2017
+          State : clean, degraded, recovering 
+ Active Devices : 2
+Working Devices : 4
+ Failed Devices : 0
+  Spare Devices : 2
+
+         Layout : left-symmetric
+     Chunk Size : 512K
+
+ Rebuild Status : 53% complete
+
+           Name : localhost6.8.localdomain:5  (local to host localhost6.8.localdomain)
+           UUID : 946c8dfd:9bc77d44:381d0edc:985e0ba3
+         Events : 9
+
+    Number   Major   Minor   RaidDevice State　　#raid的成员只有三个，sdb4只是备用。
+       0       8       19        0      active sync   /dev/sdb3
+       1       8       33        1      active sync   /dev/sdc1
+       4       8       49        2      spare rebuilding   /dev/sdd1
+
+       3       8       20        -      spare   /dev/sdb4
+
+ 
+
+[root@localhost6 raid0]#blkid　　　　#查看磁盘的UUID信息
+[root@localhost6 raid0]#mkdir /mnt/md5  #为挂载raid设备创建目录
+[root@localhost6 raid0]#mount /dev/md5 /mnt/md5 　　#挂载raid设备
+ 
+[root@localhost6 md5]#dd if=/dev/zero of=file1 bs=1M count=2048  #raid设备的写测试，没有raid0高
+2048+0 records in
+2048+0 records out
+2147483648 bytes (2.1 GB) copied, 4.94279 s, 434 MB/s
+ 
+[root@localhost6 md5]#dd if=file1 of=/dev/null 　　#raid设备的读测试
+4194304+0 records in
+4194304+0 records out
+2147483648 bytes (2.1 GB) copied, 4.1317 s, 520 MB/s
+ 
+#mdadm.conf 是raid默认的配置文件
+#-s scan:扫描raid的配置文件
+[root@localhost6 md5]#mdadm -Ds > /etc/mdadm.conf　　　　#此配置文件的用途是其中一块设备因故障停了再激活使用时，必须首先扫描配置文件。这条命令可认为是生成配置文件。
+[root@localhost6 raid0]#mkdir /mnt/md5  #为挂载raid设备创建目录
+[root@localhost6 raid0]#mount /dev/md5 /mnt/md5 　　#挂载raid设备
+ 
+[root@localhost6 md5]#dd if=/dev/zero of=file1 bs=1M count=2048  #raid设备的写测试，没有raid0高
+2048+0 records in
+2048+0 records out
+2147483648 bytes (2.1 GB) copied, 4.94279 s, 434 MB/s
+ 
+[root@localhost6 md5]#dd if=file1 of=/dev/null 　　#raid设备的读测试
+4194304+0 records in
+4194304+0 records out
+2147483648 bytes (2.1 GB) copied, 4.1317 s, 520 MB/s
+ 
+#mdadm.conf 是raid默认的配置文件
+#-s scan:扫描raid的配置文件
+[root@localhost6 md5]#mdadm -Ds > /etc/mdadm.conf　　　　#此配置文件的用途是其中一块设备因故障停了再激活使用时，必须首先扫描配置文件。这条命令可认为是生成配置文件。
+ 
+
+#-A：激活raid设备
+#-S stop：停用raid设备
+[root@localhost6 md5]#mdadm -S /dev/md0    #停用raid设备必须先取消挂载
+mdadm: Cannot get exclusive access to /dev/md0:Perhaps a running process, mounted filesystem or active volume group?
+[root@localhost6 md5]#umount /mnt/raid0　　#取消挂载
+[root@localhost6 md5]#mdadm -S /dev/md0　　#停用raid设备
+mdadm: stopped /dev/md0
+[root@localhost6 md5]#ll /dev/md0　　　　　　#停用的raid设备查不到
+ls: cannot access /dev/md0: No such file or directory
+[root@localhost6 md5]#mdadm -As  /dev/md0　　#重新激活raid设备。这时需要配置文件/etc/mdadm.conf的存在并扫描确认
+mdadm: /dev/md0 has been started with 2 drives.
+
+ 
+ 
+
+#将raid的创建写入配置文件/etc/fstab
+# /etc/fstab
+# Created by anaconda on Thu Mar 23 04:54:05 2017
+#
+# Accessible filesystems, by reference, are maintained under '/dev/disk'
+# See man pages fstab(5), findfs(8), mount(8) and/or blkid(8) for more info
+#
+UUID=6c72c208-95ae-4b37-9890-7b4327770a4d /                       ext4    defaults        1 1
+UUID=9da8eb51-8801-4a49-955b-6ed82a6d41dd /apps                   ext4    defaults        1 2
+UUID=b3ef8664-92fc-4639-a78c-9db880895677 /boot                   ext4    defaults        1 2
+UUID=a2a735cb-20a0-4bfa-af8f-f33c4b3e3477 /home                   ext4    usrquota,grpquota        1 2
+UUID=e7081f48-f426-4050-86d9-dd9309523cb1 swap                    swap    defaults        0 0
+tmpfs                   /dev/shm                tmpfs   defaults        0 0
+devpts                  /dev/pts                devpts  gid=5,mode=620  0 0
+sysfs                   /sys                    sysfs   defaults        0 0
+proc                    /proc                   proc    defaults        0 0
+UUID=8251e11e-e770-4447-b6ba-e8ca57519544  /mnt/sdb1              ext4   acl        0 0 
+
+
+UUID=8cefdce6-b198-47e2-b96f-6dbd43b11432   /mnt/raid0             ext4 defaults  0   0 
+
+UUID=ae77fa79-8a9a-41f8-9aac-90bbcedca246  /mnt/md5                ext4 defaults  0  0
