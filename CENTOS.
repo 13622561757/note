@@ -1,0 +1,129 @@
+1、准备数据存放的文件系统
+新建一个逻辑卷，并将其挂载至特定目录即可。这里不再给出过程。
+这里假设其逻辑卷的挂载目录为/data，而后需要创建/data/mysqldata目录做为mysql数据的存放目录。
+[root@001 /]# mkdir -p /data/mysqldata
+2、新建用户以安全方式运行进程：
+[root@001 ~]# groupadd -r mysql
+[root@001 ~]# useradd -g mysql -r -s /sbin/nologin -M -d /data/mysqldata mysql
+[root@001 ~]# chown -R mysql:mysql /data/mysqldata
+3、安装并初始化mysql-8.0.16
+首先下载linux64位二进制版本的MySQL8.0至本地，mysql-advanced-8.0.16-linux-glibc2.5-x86_64.tar.gz
+[root@001 ~]# tar zxf mysql-8.0.16-linux-glibc2.5-x86_64.tar.gz -C /usr/local/ #根据实际情况修改
+[root@001 ~]# cd /usr/local/
+[root@001 ~]# ln -sv mysql-8.0.16-linux-glibc2.5-x86_64/ mysql #根据实际情况修改
+[root@001 ~]# cd mysql
+[root@001 ~]# chown -R mysql:mysql .
+4.为mysql提供主配置文件: #默认初始化后会在/etc下有my.cnf，如有内容删除覆盖即可
+以下为配置文件：
+[root@001 mysql]# vim /etc/my.cnf
+-----------------------------------------------------------------------------------------------------------
+[client]
+#user=mysql #根据实际情况设置用户名
+#password=123456
+[mysqld]
+########basic settings########
+server-id = 11
+port = 3306
+user = mysql
+#bind_address = 10.166.224.32 #根据实际情况修改
+#autocommit = 0 #5.6.X安装时，需要注释掉，安装完成后再打开
+character_set_server=utf8mb4
+skip_name_resolve = 1
+max_connections = 800
+max_connect_errors = 1000
+datadir = /data/mysqldata #根据实际情况修改,建议和程序分离存放
+transaction_isolation = READ-COMMITTED
+explicit_defaults_for_timestamp = 1
+join_buffer_size = 134217728
+tmp_table_size = 67108864
+tmpdir = /tmp
+max_allowed_packet = 16777216
+sql_mode = "STRICT_TRANS_TABLES,NO_ENGINE_SUBSTITUTION,NO_ZERO_DATE,NO_ZERO_IN_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER"
+interactive_timeout = 1800
+wait_timeout = 1800
+read_buffer_size = 16777216
+read_rnd_buffer_size = 33554432
+sort_buffer_size = 33554432
+########log settings########
+log_error = error.log
+slow_query_log = 1
+slow_query_log_file = slow.log
+log_queries_not_using_indexes = 1
+log_slow_admin_statements = 1
+log_slow_slave_statements = 1
+log_throttle_queries_not_using_indexes = 10
+expire_logs_days = 90
+long_query_time = 2
+min_examined_row_limit = 100
+########replication settings########
+master_info_repository = TABLE
+relay_log_info_repository = TABLE
+log_bin = bin.log
+sync_binlog = 1
+gtid_mode = on
+enforce_gtid_consistency = 1
+log_slave_updates
+binlog_format = row
+relay_log = relay.log
+relay_log_recovery = 1
+binlog_gtid_simple_recovery = 1
+slave_skip_errors = ddl_exist_errors
+########innodb settings########
+innodb_page_size = 8192
+innodb_buffer_pool_size = 6G #根据实际情况修改，实验环境需改变大小否则会报错
+innodb_buffer_pool_instances = 8
+innodb_buffer_pool_load_at_startup = 1
+innodb_buffer_pool_dump_at_shutdown = 1
+innodb_lru_scan_depth = 2000
+innodb_lock_wait_timeout = 5
+innodb_io_capacity = 4000
+innodb_io_capacity_max = 8000
+innodb_flush_method = O_DIRECT
+innodb_file_format = Barracuda
+innodb_file_format_max = Barracuda
+innodb_log_group_home_dir = /data/mysqldata #根据实际情况修改
+innodb_undo_directory = /data/mysqldata #根据实际情况修改
+innodb_undo_logs = 128
+innodb_undo_tablespaces = 3
+innodb_flush_neighbors = 1
+innodb_log_file_size = 4G #根据实际情况修改，实验环境需改小
+innodb_log_buffer_size = 16777216
+innodb_purge_threads = 4
+innodb_large_prefix = 1
+innodb_thread_concurrency = 64
+innodb_print_all_deadlocks = 1
+innodb_strict_mode = 1
+innodb_sort_buffer_size = 67108864
+########semi sync replication settings########
+plugin_dir=/usr/local/mysql/lib/plugin #根据实际情况修改
+plugin_load = "rpl_semi_sync_master=semisync_master.so;rpl_semi_sync_slave=semisync_slave.so"
+loose_rpl_semi_sync_master_enabled = 1
+loose_rpl_semi_sync_slave_enabled = 1
+loose_rpl_semi_sync_master_timeout = 5000
+[mysqld-5.7]
+innodb_buffer_pool_dump_pct = 40
+innodb_page_cleaners = 4
+innodb_undo_log_truncate = 1
+innodb_max_undo_log_size = 2G
+innodb_purge_rseg_truncate_frequency = 128
+binlog_gtid_simple_recovery=1
+log_timestamps=system
+transaction_write_set_extraction=MURMUR32
+show_compatibility_56=on
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+[root@001 mysql]# scripts/mysql_install_db --user=mysql --datadir=/data/mysqldata/
+[root@001 mysql]# chown -R root .
+5、为mysql提供sysv服务脚本：
+[root@master ~]# cd /usr/local/mysql
+[root@master ~]# cp support-files/mysql.server /etc/rc.d/init.d/mysqld
+[root@master ~]# ldconfig
+6、修改PATH环境变量，让系统可以直接使用mysql的相关命令。
+[root@master ~]# echo "PATH=$PATH:/usr/local/mysql/bin" > /etc/profile.d/mysql.sh
+[root@master ~]# source /etc/profile.d/mysql.sh
+ 
+7、最后启动服务添加开机启动
+[root@master ~]# service mysqld start
+[root@001 mysql]# chkconfig mysqld on
+[root@001 bin]# mysql -u root -p #密码空
+8、修改密码
+mysql> set password = password('123456')
